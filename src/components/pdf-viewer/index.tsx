@@ -1,28 +1,11 @@
-// src/components/pdf-viewer.tsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import "../../scripts/pdf-worker";
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Polygon {
-  points: Point[];
-  id: string;
-  pageNumber: number;
-}
-
-interface ExtractedText {
-  pageNumber: number;
-  text: string;
-  polygonId: string;
-}
-
-interface PdfViewerProps {
-  file: File | null;
-}
+import type { ExtractedText, PdfViewerProps, Point, Polygon } from "./types";
+import { Sidebar } from "./sidebar";
+import { TopBar } from "./top-bar";
+import { PageWithOverlay } from "./page-with-overlay";
+import { RightSidebar } from "./extrated-text-sidebar";
 
 export default function PdfViewer({ file }: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0);
@@ -33,16 +16,22 @@ export default function PdfViewer({ file }: PdfViewerProps) {
   const [currentPolygon, setCurrentPolygon] = useState<Point[]>([]);
   const [extractedTexts, setExtractedTexts] = useState<ExtractedText[]>([]);
   const [showExtractedText, setShowExtractedText] = useState(false);
-  
+  const [zoom, setZoom] = useState(1.2);
+  const [isLoading, setIsLoading] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const overlayRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+
+  const zoomLevels = [0.5, 0.75, 1, 1.2, 1.5, 2, 2.5, 3];
 
   useEffect(() => {
     if (!file) return;
 
     const loadPdf = async () => {
       try {
+        setIsLoading(true);
         const fileUrl = URL.createObjectURL(file);
         const loadingTask = pdfjsLib.getDocument(fileUrl);
         const pdf = await loadingTask.promise;
@@ -51,6 +40,8 @@ export default function PdfViewer({ file }: PdfViewerProps) {
         URL.revokeObjectURL(fileUrl);
       } catch (err) {
         console.error("Erro ao carregar PDF:", err);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -85,6 +76,24 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     }
   }, [currentPage]);
 
+  const handleZoomIn = () => {
+    const currentIndex = zoomLevels.indexOf(zoom);
+    if (currentIndex < zoomLevels.length - 1) {
+      setZoom(zoomLevels[currentIndex + 1]);
+    }
+  };
+
+  const handleZoomOut = () => {
+    const currentIndex = zoomLevels.indexOf(zoom);
+    if (currentIndex > 0) {
+      setZoom(zoomLevels[currentIndex - 1]);
+    }
+  };
+
+  const handleZoomReset = () => {
+    setZoom(1.2);
+  };
+
   const startDrawing = () => {
     setIsDrawing(true);
     setCurrentPolygon([]);
@@ -95,9 +104,9 @@ export default function PdfViewer({ file }: PdfViewerProps) {
       const newPolygon: Polygon = {
         points: currentPolygon,
         id: `polygon_${Date.now()}`,
-        pageNumber: currentPage
+        pageNumber: currentPage,
       };
-      setPolygons(prev => [...prev, newPolygon]);
+      setPolygons((prev) => [...prev, newPolygon]);
     }
     setIsDrawing(false);
     setCurrentPolygon([]);
@@ -106,10 +115,10 @@ export default function PdfViewer({ file }: PdfViewerProps) {
   const clearPolygons = () => {
     setPolygons([]);
     setExtractedTexts([]);
-    // Limpar overlays
-    overlayRefs.current.forEach(canvas => {
+    setShowExtractedText(false);
+    overlayRefs.current.forEach((canvas) => {
       if (canvas) {
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
@@ -120,23 +129,22 @@ export default function PdfViewer({ file }: PdfViewerProps) {
   const extractTextFromPolygons = async () => {
     if (!pdfDoc || polygons.length === 0) return;
 
+    setIsLoading(true);
     const extractedResults: ExtractedText[] = [];
 
     for (const polygon of polygons) {
       try {
         const page = await pdfDoc.getPage(polygon.pageNumber);
         const textContent = await page.getTextContent();
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: zoom });
 
-        // Encontrar texto dentro do polígono
         const textsInPolygon: string[] = [];
-        
+
         textContent.items.forEach((item: any) => {
           if (item.transform && item.str) {
-            // Converter coordenadas do PDF para coordenadas do canvas
-            const x = item.transform[4] * 1.5;
-            const y = viewport.height - (item.transform[5] * 1.5);
-            
+            const x = item.transform[4] * zoom;
+            const y = viewport.height - item.transform[5] * zoom;
+
             if (isPointInPolygon({ x, y }, polygon.points)) {
               textsInPolygon.push(item.str);
             }
@@ -146,38 +154,43 @@ export default function PdfViewer({ file }: PdfViewerProps) {
         if (textsInPolygon.length > 0) {
           extractedResults.push({
             pageNumber: polygon.pageNumber,
-            text: textsInPolygon.join(' ').trim(),
-            polygonId: polygon.id
+            text: textsInPolygon.join(" ").trim(),
+            polygonId: polygon.id,
           });
         }
       } catch (err) {
-        console.error(`Erro ao extrair texto da página ${polygon.pageNumber}:`, err);
+        console.error(
+          `Erro ao extrair texto da página ${polygon.pageNumber}:`,
+          err
+        );
       }
     }
 
     setExtractedTexts(extractedResults);
     setShowExtractedText(true);
+    setIsLoading(false);
   };
 
   const extractTextFromAllPages = async () => {
     if (!pdfDoc || polygons.length === 0) return;
 
+    setIsLoading(true);
     const extractedResults: ExtractedText[] = [];
-    const referencePolygon = polygons[0]; // Usar o primeiro polígono como referência
+    const referencePolygon = polygons[0]; // Assuming the first polygon is the reference
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       try {
         const page = await pdfDoc.getPage(pageNum);
         const textContent = await page.getTextContent();
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: zoom });
 
         const textsInPolygon: string[] = [];
-        
+
         textContent.items.forEach((item: any) => {
           if (item.transform && item.str) {
-            const x = item.transform[4] * 1.5;
-            const y = viewport.height - (item.transform[5] * 1.5);
-            
+            const x = item.transform[4] * zoom;
+            const y = viewport.height - item.transform[5] * zoom;
+
             if (isPointInPolygon({ x, y }, referencePolygon.points)) {
               textsInPolygon.push(item.str);
             }
@@ -187,8 +200,8 @@ export default function PdfViewer({ file }: PdfViewerProps) {
         if (textsInPolygon.length > 0) {
           extractedResults.push({
             pageNumber: pageNum,
-            text: textsInPolygon.join(' ').trim(),
-            polygonId: `${referencePolygon.id}_page_${pageNum}`
+            text: textsInPolygon.join(" ").trim(),
+            polygonId: `${referencePolygon.id}_page_${pageNum}`,
           });
         }
       } catch (err) {
@@ -198,15 +211,25 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
     setExtractedTexts(extractedResults);
     setShowExtractedText(true);
+    setIsLoading(false);
   };
 
-  // Função para verificar se um ponto está dentro de um polígono
+  const scrollToPage = (pageNumber: number) => {
+    const pageCanvas = pageRefs.current[pageNumber - 1];
+    if (pageCanvas && containerRef.current) {
+      pageCanvas.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   const isPointInPolygon = (point: Point, polygon: Point[]): boolean => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
       if (
         polygon[i].y > point.y !== polygon[j].y > point.y &&
-        point.x < ((polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)) / (polygon[j].y - polygon[i].y) + polygon[i].x
+        point.x <
+          ((polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)) /
+            (polygon[j].y - polygon[i].y) +
+            polygon[i].x
       ) {
         inside = !inside;
       }
@@ -217,279 +240,89 @@ export default function PdfViewer({ file }: PdfViewerProps) {
   if (!file) return null;
 
   return (
-    <div className="mt-6 max-h-[90vh] w-full max-w-6xl mx-auto flex">
-      {/* Painel de controle */}
-      <div className="w-80 p-4 bg-gray-50 border-r flex flex-col space-y-4">
-        <div className="text-lg font-bold text-gray-800">Controles de Seleção</div>
-        
-        <div className="flex flex-col space-y-2">
-          <button
-            onClick={startDrawing}
-            disabled={isDrawing}
-            className={`px-4 py-2 rounded font-medium ${
-              isDrawing 
-                ? 'bg-green-500 text-white cursor-not-allowed' 
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {isDrawing ? 'Desenhando... (clique para finalizar)' : 'Iniciar Desenho'}
-          </button>
-          
-          {isDrawing && (
-            <button
-              onClick={stopDrawing}
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-medium"
-            >
-              Finalizar Polígono
-            </button>
-          )}
-          
-          <button
-            onClick={clearPolygons}
-            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded font-medium"
-          >
-            Limpar Seleções
-          </button>
-        </div>
-
-        <div className="border-t pt-4">
-          <div className="text-md font-semibold text-gray-700 mb-2">Extração de Texto</div>
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={extractTextFromPolygons}
-              disabled={polygons.length === 0}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded font-medium"
-            >
-              Extrair Texto dos Polígonos
-            </button>
-            
-            <button
-              onClick={extractTextFromAllPages}
-              disabled={polygons.length === 0}
-              className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded font-medium"
-            >
-              Extrair de Todas as Páginas
-            </button>
+    <div className="h-full w-full flex flex-col bg-gray-50">
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center space-y-3">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p className="text-gray-600 font-medium">Processando...</p>
           </div>
         </div>
+      )}
 
-        <div className="text-sm text-gray-600">
-          <div>Polígonos criados: {polygons.length}</div>
-          <div>Página atual: {currentPage} de {numPages}</div>
-        </div>
+      {/* Top Bar */}
+      <TopBar
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        currentPage={currentPage}
+        numPages={numPages}
+        isDrawing={isDrawing}
+        zoom={zoom}
+      />
 
-        {/* Resultados da extração */}
-        {showExtractedText && extractedTexts.length > 0 && (
-          <div className="border-t pt-4 max-h-60 overflow-y-auto">
-            <div className="text-md font-semibold text-gray-700 mb-2">Texto Extraído</div>
-            {extractedTexts.map((result, index) => (
-              <div key={index} className="mb-3 p-3 bg-white rounded border">
-                <div className="text-sm font-medium text-gray-600 mb-1">
-                  Página {result.pageNumber}
-                </div>
-                <div className="text-sm text-gray-800 bg-gray-50 p-2 rounded">
-                  {result.text}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Main Content with Sidebars */}
+      <div className="flex-1 flex flex-row min-h-0">
+        {/* Sidebar Esquerda */}
+        <Sidebar
+          sidebarCollapsed={sidebarCollapsed}
+          setSidebarCollapsed={setSidebarCollapsed}
+          zoom={zoom}
+          zoomLevels={zoomLevels}
+          handleZoomIn={handleZoomIn}
+          handleZoomOut={handleZoomOut}
+          handleZoomReset={handleZoomReset}
+          isDrawing={isDrawing}
+          startDrawing={startDrawing}
+          stopDrawing={stopDrawing}
+          clearPolygons={clearPolygons}
+          polygons={polygons}
+          extractTextFromPolygons={extractTextFromPolygons}
+          extractTextFromAllPages={extractTextFromAllPages}
+          currentPage={currentPage}
+          numPages={numPages}
+          extractedTexts={extractedTexts}
+          showExtractedText={showExtractedText}
+          setShowExtractedText={setShowExtractedText}
+          scrollToPage={scrollToPage}
+          isLoading={isLoading}
+        />
 
-      {/* Visualizador de PDF */}
-      <div className="flex-1 flex flex-col">
-        <div className="p-4 bg-white border-b">
-          <div className="text-center text-gray-700 font-semibold">
-            Página {currentPage} de {numPages}
-          </div>
-          <div className="text-center text-sm text-gray-500 mt-1">
-            {isDrawing ? 'Clique para adicionar pontos ao polígono' : 'Use os controles à esquerda para começar'}
-          </div>
-        </div>
-
+        {/* PDF Viewer (Centro) */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-auto bg-gray-300 p-4 space-y-8"
+          className="flex-1 overflow-auto bg-gradient-to-b from-gray-100 to-gray-200 p-4 sm:p-6 lg:p-8"
         >
-          {Array.from({ length: numPages }, (_, i) => (
-            <PageWithOverlay
-              key={`page_${i + 1}`}
-              pdf={pdfDoc}
-              pageNumber={i + 1}
-              isDrawing={isDrawing}
-              currentPolygon={currentPolygon}
-              setCurrentPolygon={setCurrentPolygon}
-              polygons={polygons.filter(p => p.pageNumber === i + 1)}
-              onCanvasRef={(canvas) => {
-                pageRefs.current[i] = canvas;
-              }}
-              onOverlayRef={(canvas) => {
-                overlayRefs.current[i] = canvas;
-              }}
-            />
-          ))}
+          <div className="max-w-4xl mx-auto space-y-6">
+            {Array.from({ length: numPages }, (_, i) => (
+              <PageWithOverlay
+                key={`page_${i + 1}`}
+                pdf={pdfDoc}
+                pageNumber={i + 1}
+                zoom={zoom}
+                isDrawing={isDrawing}
+                currentPolygon={currentPolygon}
+                setCurrentPolygon={setCurrentPolygon}
+                polygons={polygons.filter((p) => p.pageNumber === i + 1)}
+                onCanvasRef={(canvas) => {
+                  pageRefs.current[i] = canvas;
+                }}
+                onOverlayRef={(canvas) => {
+                  overlayRefs.current[i] = canvas;
+                }}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* Sidebar Direita */}
+        <RightSidebar
+          showExtractedText={showExtractedText}
+          setShowExtractedText={setShowExtractedText}
+          extractedTexts={extractedTexts}
+          scrollToPage={scrollToPage}
+        />
       </div>
     </div>
   );
 }
-
-type PageWithOverlayProps = {
-  pdf: pdfjsLib.PDFDocumentProxy | null;
-  pageNumber: number;
-  isDrawing: boolean;
-  currentPolygon: Point[];
-  setCurrentPolygon: React.Dispatch<React.SetStateAction<Point[]>>;
-  polygons: Polygon[];
-  onCanvasRef: (canvas: HTMLCanvasElement | null) => void;
-  onOverlayRef: (canvas: HTMLCanvasElement | null) => void;
-};
-
-const PageWithOverlay: React.FC<PageWithOverlayProps> = ({
-  pdf,
-  pageNumber,
-  isDrawing,
-  currentPolygon,
-  setCurrentPolygon,
-  polygons,
-  onCanvasRef,
-  onOverlayRef,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!pdf) return;
-
-    const renderPage = async () => {
-      const page = await pdf.getPage(pageNumber);
-      const scale = 1.5;
-      const viewport = page.getViewport({ scale });
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const context = canvas.getContext("2d");
-      if (!context) return;
-
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      await page.render({ canvasContext: context, viewport }).promise;
-
-      // Configurar overlay
-      const overlay = overlayRef.current;
-      if (overlay) {
-        overlay.width = viewport.width;
-        overlay.height = viewport.height;
-        drawPolygons();
-      }
-    };
-
-    renderPage();
-  }, [pdf, pageNumber]);
-
-  useEffect(() => {
-    onCanvasRef(canvasRef.current);
-    onOverlayRef(overlayRef.current);
-  }, [onCanvasRef, onOverlayRef]);
-
-  const drawPolygons = () => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-
-    const ctx = overlay.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-    // Desenhar polígonos salvos
-    polygons.forEach((polygon) => {
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)';
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
-      ctx.lineWidth = 2;
-
-      polygon.points.forEach((point, index) => {
-        if (index === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
-      });
-
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // Desenhar pontos
-      polygon.points.forEach((point) => {
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(34, 197, 94, 1)';
-        ctx.fill();
-      });
-    });
-
-    // Desenhar polígono atual sendo desenhado
-    if (currentPolygon.length > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
-      ctx.lineWidth = 2;
-
-      currentPolygon.forEach((point, index) => {
-        if (index === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
-      });
-
-      if (currentPolygon.length > 2) {
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.stroke();
-
-      // Desenhar pontos
-      currentPolygon.forEach((point) => {
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(59, 130, 246, 1)';
-        ctx.fill();
-      });
-    }
-  };
-
-  useEffect(() => {
-    drawPolygons();
-  }, [currentPolygon, polygons]);
-
-  const handleOverlayClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !overlayRef.current) return;
-
-    const rect = overlayRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setCurrentPolygon(prev => [...prev, { x, y }]);
-  };
-
-  return (
-    <div ref={containerRef} className="relative flex justify-center">
-      <canvas
-        ref={canvasRef}
-        className="rounded-xl shadow border"
-        aria-label={`Página ${pageNumber}`}
-      />
-      <canvas
-        ref={overlayRef}
-        className="absolute top-0 left-0 rounded-xl cursor-crosshair"
-        onClick={handleOverlayClick}
-        style={{ pointerEvents: isDrawing ? 'auto' : 'none' }}
-      />
-    </div>
-  );
-};
