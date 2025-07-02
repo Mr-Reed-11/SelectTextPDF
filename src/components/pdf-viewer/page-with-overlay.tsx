@@ -10,6 +10,7 @@ type PageWithOverlayProps = {
   currentPolygon: Point[];
   setCurrentPolygon: React.Dispatch<React.SetStateAction<Point[]>>;
   polygons: Polygon[];
+  setPolygons: React.Dispatch<React.SetStateAction<Polygon[]>>; // Adicionado para limpar polígonos
   onCanvasRef: (canvas: HTMLCanvasElement | null) => void;
   onOverlayRef: (canvas: HTMLCanvasElement | null) => void;
 };
@@ -22,6 +23,7 @@ export const PageWithOverlay: React.FC<PageWithOverlayProps> = ({
   currentPolygon,
   setCurrentPolygon,
   polygons,
+  setPolygons, // Adicionado
   onCanvasRef,
   onOverlayRef,
 }) => {
@@ -30,8 +32,21 @@ export const PageWithOverlay: React.FC<PageWithOverlayProps> = ({
   const [hasTextContent, setHasTextContent] = useState<boolean>(false);
   const [showTextAlert, setShowTextAlert] = useState<boolean>(false);
   const [selectedText, setSelectedText] = useState<string>("");
+  const prevZoomRef = useRef<number>(zoom); // Ref para armazenar o zoom anterior
 
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+
+  // Effect para limpar polígonos quando o zoom mudar
+  useEffect(() => {
+    if (prevZoomRef.current !== zoom) {
+      // Limpa polígonos existentes
+      setPolygons([]);
+      // Limpa polígono atual sendo desenhado
+      setCurrentPolygon([]);
+      // Atualiza a referência do zoom anterior
+      prevZoomRef.current = zoom;
+    }
+  }, [zoom, setPolygons, setCurrentPolygon]);
 
   // Função para verificar se há conteúdo de texto na página
   const checkTextContent = async (page: pdfjsLib.PDFPageProxy) => {

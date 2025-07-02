@@ -297,6 +297,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
             {Array.from({ length: numPages }, (_, i) => (
               <PageWithOverlay
                 key={`page_${i + 1}`}
+                setPolygons={setPolygons} 
                 pdf={pdfDoc}
                 pageNumber={i + 1}
                 zoom={zoom}
