@@ -9,7 +9,7 @@ export default function Header() {
         <h1 className="text-xl font-semibold text-blue-600">Select Text PDF</h1>
       </div>
       <a
-        href="https://github.com/seu-usuario/pdf-area-extractor"
+        href="https://github.com/Mr-Reed-11/SelectTextPDF"
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition"
