@@ -8,35 +8,42 @@ import { PageWithOverlay } from "./page-with-overlay";
 import { RightSidebar } from "./extrated-text-sidebar";
 
 export default function PdfViewer({ file }: PdfViewerProps) {
-  const [numPages, setNumPages] = useState(0);
-  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [polygons, setPolygons] = useState<Polygon[]>([]);
-  const [currentPolygon, setCurrentPolygon] = useState<Point[]>([]);
-  const [extractedTexts, setExtractedTexts] = useState<ExtractedText[]>([]);
-  const [showExtractedText, setShowExtractedText] = useState(false);
-  const [zoom, setZoom] = useState(1.2);
-  const [isLoading, setIsLoading] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Estados principais do visualizador
+  const [numPages, setNumPages] = useState(0); // Número total de páginas do PDF
+  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null); // Documento PDF carregado
+  const [currentPage, setCurrentPage] = useState(1); // Página atual sendo visualizada
+  const [isDrawing, setIsDrawing] = useState(false); // Indica se está no modo de desenho
+  const [polygons, setPolygons] = useState<Polygon[]>([]); // Array de polígonos finalizados
+  const [currentPolygon, setCurrentPolygon] = useState<Point[]>([]); // Pontos do polígono sendo desenhado
+  const [extractedTexts, setExtractedTexts] = useState<ExtractedText[]>([]); // Textos extraídos dos polígonos
+  const [showExtractedText, setShowExtractedText] = useState(false); // Controla exibição da sidebar de texto
+  const [zoom, setZoom] = useState(1.2); // Nível de zoom atual
+  const [isLoading, setIsLoading] = useState(false); // Indicador de carregamento
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // Estado da sidebar esquerda
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pageRefs = useRef<(HTMLCanvasElement | null)[]>([]);
-  const overlayRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  // Referências para elementos DOM
+  const containerRef = useRef<HTMLDivElement>(null); // Container principal de scroll
+  const pageRefs = useRef<(HTMLCanvasElement | null)[]>([]); // Array de referências para canvas das páginas
+  const overlayRefs = useRef<(HTMLCanvasElement | null)[]>([]); // Array de referências para canvas de overlay
 
+  // Níveis de zoom disponíveis
   const zoomLevels = [0.5, 0.75, 1, 1.2, 1.5, 2, 2.5, 3];
 
+  // Effect para carregar o PDF quando o arquivo é fornecido
   useEffect(() => {
     if (!file) return;
 
     const loadPdf = async () => {
       try {
         setIsLoading(true);
+        // Cria URL temporária para o arquivo
         const fileUrl = URL.createObjectURL(file);
+        // Carrega o documento PDF
         const loadingTask = pdfjsLib.getDocument(fileUrl);
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
+        // Limpa a URL temporária para evitar vazamentos de memória
         URL.revokeObjectURL(fileUrl);
       } catch (err) {
         console.error("Erro ao carregar PDF:", err);
@@ -48,6 +55,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     loadPdf();
   }, [file]);
 
+  // Effect para detectar a página atual baseada na posição do scroll
   useEffect(() => {
     const onScroll = () => {
       if (!containerRef.current) return;
@@ -56,6 +64,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
       let minDistance = Infinity;
       let activePage = currentPage;
 
+      // Verifica qual página está mais próxima do topo do container
       pageRefs.current.forEach((canvas, index) => {
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
@@ -76,6 +85,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     }
   }, [currentPage]);
 
+  // Função para aumentar o zoom
   const handleZoomIn = () => {
     const currentIndex = zoomLevels.indexOf(zoom);
     if (currentIndex < zoomLevels.length - 1) {
@@ -83,6 +93,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     }
   };
 
+  // Função para diminuir o zoom
   const handleZoomOut = () => {
     const currentIndex = zoomLevels.indexOf(zoom);
     if (currentIndex > 0) {
@@ -90,20 +101,24 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     }
   };
 
+  // Função para resetar o zoom ao valor padrão
   const handleZoomReset = () => {
     setZoom(1.2);
   };
 
+  // Função para iniciar o modo de desenho
   const startDrawing = () => {
     setIsDrawing(true);
     setCurrentPolygon([]);
   };
 
+  // Função para finalizar o desenho do polígono
   const stopDrawing = () => {
+    // Só finaliza se o polígono tem pelo menos 3 pontos
     if (currentPolygon.length >= 3) {
       const newPolygon: Polygon = {
         points: currentPolygon,
-        id: `polygon_${Date.now()}`,
+        id: `polygon_${Date.now()}`, // ID único baseado no timestamp
         pageNumber: currentPage,
       };
       setPolygons((prev) => [...prev, newPolygon]);
@@ -112,10 +127,12 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     setCurrentPolygon([]);
   };
 
+  // Função para limpar todos os polígonos
   const clearPolygons = () => {
     setPolygons([]);
     setExtractedTexts([]);
     setShowExtractedText(false);
+    // Limpa todos os canvas de overlay
     overlayRefs.current.forEach((canvas) => {
       if (canvas) {
         const ctx = canvas.getContext("2d");
@@ -126,12 +143,14 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     });
   };
 
+  // Função para extrair texto apenas dos polígonos desenhados
   const extractTextFromPolygons = async () => {
     if (!pdfDoc || polygons.length === 0) return;
 
     setIsLoading(true);
     const extractedResults: ExtractedText[] = [];
 
+    // Processa cada polígono individualmente
     for (const polygon of polygons) {
       try {
         const page = await pdfDoc.getPage(polygon.pageNumber);
@@ -140,17 +159,21 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
         const textsInPolygon: string[] = [];
 
+        // Verifica cada item de texto da página
         textContent.items.forEach((item: any) => {
           if (item.transform && item.str) {
+            // Calcula a posição do texto no canvas
             const x = item.transform[4] * zoom;
             const y = viewport.height - item.transform[5] * zoom;
 
+            // Verifica se o texto está dentro do polígono
             if (isPointInPolygon({ x, y }, polygon.points)) {
               textsInPolygon.push(item.str);
             }
           }
         });
 
+        // Adiciona o texto extraído se houver conteúdo
         if (textsInPolygon.length > 0) {
           extractedResults.push({
             pageNumber: polygon.pageNumber,
@@ -171,13 +194,15 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     setIsLoading(false);
   };
 
+  // Função para extrair texto de todas as páginas usando o primeiro polígono como referência
   const extractTextFromAllPages = async () => {
     if (!pdfDoc || polygons.length === 0) return;
 
     setIsLoading(true);
     const extractedResults: ExtractedText[] = [];
-    const referencePolygon = polygons[0]; // Assuming the first polygon is the reference
+    const referencePolygon = polygons[0]; // Usa o primeiro polígono como referência
 
+    // Processa todas as páginas do documento
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       try {
         const page = await pdfDoc.getPage(pageNum);
@@ -186,17 +211,21 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
         const textsInPolygon: string[] = [];
 
+        // Verifica cada item de texto da página
         textContent.items.forEach((item: any) => {
           if (item.transform && item.str) {
+            // Calcula a posição do texto no canvas
             const x = item.transform[4] * zoom;
             const y = viewport.height - item.transform[5] * zoom;
 
+            // Verifica se o texto está dentro da área do polígono de referência
             if (isPointInPolygon({ x, y }, referencePolygon.points)) {
               textsInPolygon.push(item.str);
             }
           }
         });
 
+        // Adiciona o texto extraído se houver conteúdo
         if (textsInPolygon.length > 0) {
           extractedResults.push({
             pageNumber: pageNum,
@@ -214,6 +243,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     setIsLoading(false);
   };
 
+  // Função para navegar até uma página específica
   const scrollToPage = (pageNumber: number) => {
     const pageCanvas = pageRefs.current[pageNumber - 1];
     if (pageCanvas && containerRef.current) {
@@ -221,6 +251,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     }
   };
 
+  // Algoritmo para verificar se um ponto está dentro de um polígono (Ray Casting)
   const isPointInPolygon = (point: Point, polygon: Point[]): boolean => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -237,11 +268,12 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     return inside;
   };
 
+  // Não renderiza nada se não há arquivo
   if (!file) return null;
 
   return (
     <div className="h-full w-full flex flex-col bg-gray-50">
-      {/* Loading Overlay */}
+      {/* Overlay de carregamento */}
       {isLoading && (
         <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
           <div className="flex flex-col items-center space-y-3">
@@ -251,7 +283,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
         </div>
       )}
 
-      {/* Top Bar */}
+      {/* Barra superior com controles */}
       <TopBar
         sidebarCollapsed={sidebarCollapsed}
         setSidebarCollapsed={setSidebarCollapsed}
@@ -261,9 +293,9 @@ export default function PdfViewer({ file }: PdfViewerProps) {
         zoom={zoom}
       />
 
-      {/* Main Content with Sidebars */}
+      {/* Conteúdo principal com sidebars */}
       <div className="flex-1 flex flex-row min-h-0">
-        {/* Sidebar Esquerda */}
+        {/* Sidebar esquerda - Controles e navegação */}
         <Sidebar
           sidebarCollapsed={sidebarCollapsed}
           setSidebarCollapsed={setSidebarCollapsed}
@@ -288,12 +320,13 @@ export default function PdfViewer({ file }: PdfViewerProps) {
           isLoading={isLoading}
         />
 
-        {/* PDF Viewer (Centro) */}
+        {/* Área central - Visualizador do PDF */}
         <div
           ref={containerRef}
           className="flex-1 overflow-auto bg-gradient-to-b from-gray-100 to-gray-200 p-4 sm:p-6 lg:p-8"
         >
           <div className="max-w-4xl mx-auto space-y-6">
+            {/* Renderiza todas as páginas do PDF */}
             {Array.from({ length: numPages }, (_, i) => (
               <PageWithOverlay
                 key={`page_${i + 1}`}
@@ -304,6 +337,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
                 isDrawing={isDrawing}
                 currentPolygon={currentPolygon}
                 setCurrentPolygon={setCurrentPolygon}
+                // Filtra polígonos para mostrar apenas os da página atual
                 polygons={polygons.filter((p) => p.pageNumber === i + 1)}
                 onCanvasRef={(canvas) => {
                   pageRefs.current[i] = canvas;
@@ -316,7 +350,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
           </div>
         </div>
 
-        {/* Sidebar Direita */}
+        {/* Sidebar direita - Texto extraído */}
         <RightSidebar
           showExtractedText={showExtractedText}
           setShowExtractedText={setShowExtractedText}

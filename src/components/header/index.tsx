@@ -1,6 +1,8 @@
 import { FolderGit2 } from "lucide-react";
 import logo from "../../assets/SelectTextPDF-logo.svg";
 
+// Componente Header
+// Exibe o cabeçalho da aplicação com o logo e link para o GitHub
 export default function Header() {
   return (
     <header className="w-full bg-white shadow-sm p-4 flex justify-between items-center">

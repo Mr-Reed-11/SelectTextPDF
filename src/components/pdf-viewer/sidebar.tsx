@@ -1,5 +1,6 @@
 import type { ExtractedText, Polygon } from "./types";
 
+// Tipagem das props recebidas pelo componente Sidebar
 interface SidebarProps {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -46,23 +47,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isLoading,
 }) => {
   return (
+    // Container principal da sidebar
     <div className={`
       ${sidebarCollapsed ? 'w-0 lg:w-16' : 'w-full lg:w-80'}
       transition-all duration-300 ease-in-out
       ${sidebarCollapsed ? 'overflow-hidden' : ''}
       bg-white border-r border-gray-200 shadow-sm flex flex-col h-full
     `}>
-      {/* Sidebar Header - Fixed */}
+      
+      {/* Cabeçalho da Sidebar */}
       <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
         <div className="flex items-center justify-between">
           {!sidebarCollapsed && (
             <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+              {/* Ícone do título */}
               <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Controles
             </h2>
           )}
+          {/* Botão de colapsar/expandir sidebar */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="p-2 rounded-lg hover:bg-gray-200 transition-colors lg:block hidden"
@@ -74,11 +79,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Content */}
+      {/* Conteúdo scrollável, visível apenas se a sidebar estiver expandida */}
       {!sidebarCollapsed && (
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="flex flex-col min-h-full">
-            {/* Zoom Controls */}
+            
+            {/* Controles de Zoom */}
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,6 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 Zoom
               </h3>
               <div className="flex items-center space-x-2">
+                {/* Botão de diminuir zoom */}
                 <button
                   onClick={handleZoomOut}
                   disabled={zoom <= zoomLevels[0]}
@@ -96,9 +103,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                   </svg>
                 </button>
+
+                {/* Porcentagem atual do zoom */}
                 <span className="px-3 py-1 bg-gray-100 rounded-lg text-sm font-medium min-w-[60px] text-center">
                   {Math.round(zoom * 100)}%
                 </span>
+
+                {/* Botão de aumentar zoom */}
                 <button
                   onClick={handleZoomIn}
                   disabled={zoom >= zoomLevels[zoomLevels.length - 1]}
@@ -108,6 +119,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                 </button>
+
+                {/* Botão de reset de zoom */}
                 <button
                   onClick={handleZoomReset}
                   className="px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
@@ -117,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Drawing Controls */}
+            {/* Controles de Desenho */}
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,6 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </h3>
 
               <div className="space-y-2">
+                {/* Botão para iniciar ou finalizar desenho */}
                 {!isDrawing ? (
                   <button
                     onClick={startDrawing}
@@ -139,6 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 ) : (
                   <div className="space-y-2">
+                    {/* Status do modo desenho */}
                     <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center text-green-700 text-sm">
                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
@@ -146,6 +161,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                       <p className="text-xs text-green-600 mt-1">Clique no PDF para adicionar pontos</p>
                     </div>
+
+                    {/* Botão para finalizar o polígono */}
                     <button
                       onClick={stopDrawing}
                       className="w-full px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md"
@@ -155,6 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 )}
 
+                {/* Botão para limpar todos os polígonos */}
                 <button
                   onClick={clearPolygons}
                   disabled={polygons.length === 0}
@@ -168,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Extraction Controls */}
+            {/* Controles de Extração de Texto */}
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,6 +196,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </h3>
 
               <div className="space-y-2">
+                {/* Botão para extrair texto dos polígonos da página atual */}
                 <button
                   onClick={extractTextFromPolygons}
                   disabled={polygons.length === 0 || isLoading}
@@ -186,6 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Extrair Texto dos Polígonos
                 </button>
 
+                {/* Botão para extrair texto de todas as páginas */}
                 <button
                   onClick={extractTextFromAllPages}
                   disabled={polygons.length === 0 || isLoading}
@@ -196,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Status Info */}
+            {/* Informações de status: quantidade de polígonos, página atual, textos extraídos */}
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
               <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                 <div className="flex justify-between text-sm">
@@ -216,7 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Page Navigation */}
+            {/* Navegação por páginas (aparece somente se houver mais de uma página) */}
             {numPages > 1 && (
               <div className="p-4 border-b border-gray-200 flex-shrink-0">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Navegação</h3>
@@ -241,6 +261,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
             )}
+
           </div>
         </div>
       )}
